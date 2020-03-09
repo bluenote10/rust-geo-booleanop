@@ -37,8 +37,10 @@ where
     // express by swapping them here according to their temporal order. In case we have
     // to swap, the result function must be inverted accordingly.
     let (se_old_l, se_new_l, less_if) = if se1_l.is_before(&se2_l) {
+        println!("less if normal");
         (se1_l, se2_l, helper::less_if as fn(bool) -> Ordering)
     } else {
+        println!("less if inverse");
         (se2_l, se1_l, helper::less_if_inversed as fn(bool) -> Ordering)
     };
 
@@ -86,6 +88,7 @@ where
         }
 
         // Segments are collinear
+        /*
         if se_old_l.is_subject == se_new_l.is_subject {
             if se_old_l.point == se_new_l.point {
                 // Previously this was returning Ordering::Equal if the segments had identical
@@ -101,6 +104,32 @@ where
         } else {
             less_if(se_old_l.is_subject)
         }
+        */
+
+        /*
+        if se_old_l.point == se_new_l.point && se_old_r.point == se_new_r.point {
+            // Previously this was returning Ordering::Equal if the segments had identical
+            // left and right endpoints. I think in order to properly support self-overlapping
+            // segments we must return Ordering::Equal if and only if segments are the same
+            // by identity (the Rc::ptr_eq above).
+            println!("comparing via contour id");
+            less_if(se_old_l.contour_id < se_new_l.contour_id)
+        } else {
+            // Fallback to purely temporal-based comparison. Since `less_if` already
+            // encodes "earlier-is-less" semantics, no comparison is needed.
+            println!("fallback to temporal comparison");
+            less_if(true)
+        }
+        */
+
+        /*
+        if se_old_l.point == se_new_l.point && se_old_r.point != se_new_r.point {
+            less_if(se_old_r.is_after(&se_new_r))
+        } else {
+            less_if(true)
+        }
+        */
+        less_if(se_old_l.contour_id < se_new_l.contour_id)
     } else {
         debug_assert!(false, "Other events should always be defined in compare_segment.");
         less_if(true)
@@ -231,7 +260,7 @@ mod test {
     #[test]
     fn collinear_segments() {
         let (se1, _other1) = make_simple(0, 1.0, 1.0, 5.0, 1.0, true);
-        let (se2, _other2) = make_simple(0, 2.0, 01.0, 3.0, 1.0, false);
+        let (se2, _other2) = make_simple(1, 2.0, 01.0, 3.0, 1.0, false);
 
         assert_ne!(se1.is_subject, se2.is_subject);
         assert_ordering!(se1, se2, Ordering::Less);
@@ -259,7 +288,7 @@ mod test {
     #[test]
     fn collinear_same_polygon_different_left() {
         let (se1, _other2) = make_simple(0, 1.0, 1.0, 5.0, 1.0, true);
-        let (se2, _other1) = make_simple(0, 2.0, 1.0, 3.0, 1.0, true);
+        let (se2, _other1) = make_simple(1, 2.0, 1.0, 3.0, 1.0, true);
 
         assert_eq!(se1.is_subject, se2.is_subject);
         assert_ne!(se1.point, se2.point);
@@ -294,7 +323,7 @@ mod test {
     #[test]
     fn vertical_segment() {
         // vertical reference segment at x = 0, expanding from y = -1 to +1.
-        let (se1, _other1) = make_simple(0, 0.0, -1.0, 0.0, 1.0, true);
+        let (se1, _other1) = make_simple(1, 0.0, -1.0, 0.0, 1.0, true);
 
         // "above" cases
         let (se2, _other2) = make_simple(0, -1.0, 1.0, 0.0, 1.0, true);
@@ -305,7 +334,7 @@ mod test {
         assert_ordering!(se1, se2, Ordering::Less);
         let (se2, _other2) = make_simple(0, 0.0, 2.0, 1.0, 2.0, true);
         assert_ordering!(se1, se2, Ordering::Less);
-        let (se2, _other2) = make_simple(0, 0.0, 1.0, 0.0, 2.0, true);
+        let (se2, _other2) = make_simple(2, 0.0, 1.0, 0.0, 2.0, true);
         assert_ordering!(se1, se2, Ordering::Less);
 
         // "below" cases
@@ -321,11 +350,61 @@ mod test {
         assert_ordering!(se1, se2, Ordering::Greater);
 
         // overlaps
-        let (se2, _other2) = make_simple(0, 0.0, -0.5, 0.0, 0.5, true);
+        let (se2, _other2) = make_simple(2, 0.0, -0.5, 0.0, 0.5, true);
         assert_ordering!(se1, se2, Ordering::Less);
         // When left endpoints are identical, the ordering is no longer anti-symmetric.
         // TODO: Decide if this is a problem.
-        // let (se2, _other2) = make_simple(0, 0.0, -1.0, 0.0, 0.0, true);
-        // assert_ordering!(se1, se2, Ordering::Less); // fails because of its not anti-symmetric.
+        let (se2, _other2) = make_simple(2, 0.0, -1.0, 0.0, 0.0, true);
+        println!("{:?}", se1.cmp(&se2));
+        println!("{:?}", se2.cmp(&se1));
+        assert_ordering!(se1, se2, Ordering::Less); // fails because of its not anti-symmetric.
     }
+
+    #[test]
+    fn overlaps_horizontal() {
+        let (se1, _other1) = make_simple(10, 0.0, 0.0, 1.0, 0.0, true);
+
+        let (se2, _other1) = make_simple(20, 0.25, 0.0, 0.75, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, -0.25, 0.0, 0.75, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.25, 0.0, 1.25, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 0.5, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 1.5, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 1.0, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+    }
+
+    #[test]
+    fn overlaps_vertical() {
+        let (se1, _other1) = make_simple(10, 0.0, 0.0, 0.0, 1.0, true);
+
+        let (se2, _other1) = make_simple(20, 0.0, 0.25, 0.0, 0.75, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, -0.25, 0.0, 0.75, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.25, 0.0, 1.25, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 0.0, 0.5, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 0.0, 1.5, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, 0.0, 0.0, 1.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+
+        let (se2, _other1) = make_simple(20, 0.0, 1.0, 0.0, 2.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+
+        // isn't this a problem: se2 is clearly "below" se1, and yet
+        // the comparison says Less, because it only considers segment ids...
+        let (se2, _other1) = make_simple(20, 0.0, -1.0, 0.0, 0.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+        let (se2, _other1) = make_simple(20, 0.0, -2.0, 0.0, -1.0, true);
+        assert_ordering!(se1, se2, Ordering::Less);
+
+    }
+
 }

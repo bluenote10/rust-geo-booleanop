@@ -246,7 +246,10 @@ where
             }
         }
 
-        less_if(!self.is_subject && other.is_subject)
+        println!("{} > {}", self.contour_id, other.contour_id);
+        less_if(self.contour_id > other.contour_id)
+        //println!("{} {} {}", self.is_subject, other.is_subject, !self.is_subject && other.is_subject);
+        //less_if(!self.is_subject && other.is_subject)
     }
 }
 
