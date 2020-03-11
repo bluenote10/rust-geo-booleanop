@@ -1,3 +1,5 @@
+extern crate rand;
+
 #[cfg(test)]
 mod fill_queue_test;
 #[cfg(test)]

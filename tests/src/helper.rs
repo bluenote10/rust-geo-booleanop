@@ -2,7 +2,7 @@ use geo_booleanop::boolean::BooleanOp;
 
 use super::compact_geojson::write_compact_geojson;
 
-use geo::{Coordinate, MultiPolygon, Polygon};
+use geo::{Coordinate, LineString, MultiPolygon, Polygon};
 use geojson::{Feature, GeoJson, Geometry, Value};
 use pretty_assertions::assert_eq;
 
@@ -11,6 +11,8 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::panic::catch_unwind;
 use std::thread::Result;
+
+use rand::seq::SliceRandom;
 
 pub fn load_fixture_from_path(path: &str) -> GeoJson {
     let mut file = File::open(path).expect("Cannot open/find fixture");
@@ -175,9 +177,95 @@ pub fn apply_operation(p1: &MultiPolygon<f64>, p2: &MultiPolygon<f64>, op: TestO
 enum ResultTag {
     MainResult,
     SwapResult,
+    PermutedResult{ab: Permutation, seed: u64}
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Permutation {
+    AB,
+    BA,
 }
 
 type WrappedResult = (ResultTag, Result<MultiPolygon<f64>>);
+
+//use permutohedron::Heap;
+//use itertools::iproduct;
+
+/*
+fn permute<T>(data: &[T]) -> Vec<Vec<T>>
+where
+    T: Clone,
+{
+    let mut data = data.to_vec();
+    let heap = Heap::new(&mut data);
+    heap.collect()
+}
+*/
+
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
+
+fn randomize_line_string(line_string: &LineString<f64>, rng: &mut StdRng) -> LineString<f64> {
+    if line_string.0.len() == 0 {
+        line_string.clone()
+    } else {
+        assert!(line_string.0.first().unwrap() == line_string.0.last().unwrap());
+        let old_points = line_string.0[0 .. line_string.0.len() - 1].to_vec();
+
+        let offset = rng.gen_range(0, old_points.len() - 1);
+        let reverse: bool = rng.gen();
+
+        let mut new_points = Vec::new();
+        if !reverse {
+            for i in 0 .. old_points.len() {
+                new_points.push(old_points[(i + offset) % old_points.len()]);
+            }
+        } else {
+            for i in (0 .. old_points.len()).rev() {
+                new_points.push(old_points[(i + offset) % old_points.len()]);
+            }
+        }
+
+        if new_points.len() > 1 {
+            new_points.push(new_points.first().unwrap().clone());
+        }
+
+        LineString(new_points)
+    }
+}
+
+fn randomize_polygon(polygons: &MultiPolygon<f64>, seed: u64) -> MultiPolygon<f64> {
+    let mut polygons = polygons.clone();
+
+    //let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
+
+    polygons.0.shuffle(&mut rng);
+    /*
+    for polygon in &mut polygons.0 {
+        polygon.interiors_mut(|rings| rings.shuffle(&mut rng));
+    }
+    */
+
+    let new_polygons: Vec<_> = polygons.0.iter().map(|polygon| {
+        let new_exterior = randomize_line_string(&polygon.exterior(), &mut rng);
+        let mut old_interiors = polygon.interiors().to_vec();
+        old_interiors.shuffle(&mut rng);
+        let new_interiors: Vec<_> = old_interiors.iter().map(|line_string| {
+            randomize_line_string(&line_string, &mut rng)
+        }).collect();
+        Polygon::new(new_exterior, new_interiors)
+    }).collect();
+
+    /*
+    for i in 0 .. polygons.0.len() {
+        //polygons.0[i].interiors.0.shuffle(&mut rng);
+        polygons.0[i].interiors_mut(|rings| rings.shuffle(&mut rng));
+    }
+    */
+
+    MultiPolygon(new_polygons)
+}
 
 fn compute_all_results(
     p1: &MultiPolygon<f64>,
@@ -203,6 +291,41 @@ fn compute_all_results(
         });
         results.push((ResultTag::SwapResult, swap_result));
     }
+
+    let operand_perms = if swappable_op {
+        vec![Permutation::AB, Permutation::BA]
+    } else {
+        vec![Permutation::AB]
+    };
+
+    for operand_perm in operand_perms {
+        let (a, b) = match operand_perm {
+            Permutation::AB => (p1, p2),
+            Permutation::BA => (p2, p1),
+        };
+
+        for seed in 0 .. 3 {
+            let a = randomize_polygon(&a, seed);
+            let b = randomize_polygon(&b, seed);
+
+            let tag = ResultTag::PermutedResult{ab: operand_perm, seed: seed};
+            let result = catch_unwind(|| {
+                println!("Running operation {:?} / {:?}", op, tag);
+                apply_operation(&a, &b, op)
+            });
+            results.push((tag, result));
+        }
+        /*
+        for (polys_a, polys_b) in iproduct!(permute(&a.0).iter(), permute(&b.0).iter()) {
+            for (poly_a, poly_b) in iproduct!(polys_a, polys_b) {
+
+            }
+        }
+        */
+        //let poly_a_perms in a.0.iter().per
+
+    }
+
     results
 }
 

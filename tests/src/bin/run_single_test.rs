@@ -1,3 +1,4 @@
+extern crate rand;
 extern crate clap;
 extern crate geo_booleanop_tests;
 
