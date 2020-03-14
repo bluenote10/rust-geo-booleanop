@@ -98,6 +98,24 @@ where
                 sweep_line.remove(&other_event);
             }
         }
+
+        let mut count = 0;
+        let mut sl_events = Vec::new();
+        sweep_line.traverse(&mut |se| {
+            count += 1;
+            sl_events.push(se.clone());
+        });
+        debug_assert_eq!(count, sweep_line.len());
+        if count > 1 {
+            for i in 0 .. sl_events.len() - 1 {
+                println!("{:?} {:?}", compare_segments(&sl_events[i], &sl_events[i + 1]), compare_segments(&sl_events[i + 1], &sl_events[i]));
+                if compare_segments(&sl_events[i], &sl_events[i + 1]) != std::cmp::Ordering::Less {
+                    println!("{{\"violating1\": {}}}", sl_events[i].to_json_debug());
+                    println!("{{\"violating2\": {}}}", sl_events[i + 1].to_json_debug());
+                    panic!("Sweep line order is violated");
+                }
+            }
+        }
     }
 
     sorted_events

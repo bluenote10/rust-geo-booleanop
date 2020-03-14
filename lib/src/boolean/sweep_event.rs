@@ -241,12 +241,13 @@ where
         }
 
         if let (Some(other1), Some(other2)) = (self.get_other_event(), other.get_other_event()) {
+            println!("sa: {}", signed_area(p1, other1.point, other2.point));
             if signed_area(p1, other1.point, other2.point) != 0. {
                 return less_if(!self.is_below(other2.point));
             }
         }
 
-        println!("{} > {}", self.contour_id, other.contour_id);
+        // println!("{} > {}", self.contour_id, other.contour_id);
         less_if(self.contour_id > other.contour_id)
         //println!("{} {} {}", self.is_subject, other.is_subject, !self.is_subject && other.is_subject);
         //less_if(!self.is_subject && other.is_subject)
@@ -274,12 +275,13 @@ where
 
     fn to_json_debug_short(&self) -> String {
         format!(
-            "{{\"addr\": \"{:p}\", \"point\": [{}, {}], \"type\": \"{}\", \"poly\": \"{}\"}}",
+            "{{\"addr\": \"{:p}\", \"point\": [{}, {}], \"type\": \"{}\", \"poly\": \"{}\", \"s_id\": {}}}",
             *self,
             self.point.x,
             self.point.y,
             if self.is_left() { "L" } else { "R" },
             if self.is_subject { "A" } else { "B" },
+            self.contour_id,
         )
     }
 }

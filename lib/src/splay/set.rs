@@ -60,6 +60,10 @@ where
     pub fn max(&self) -> Option<&T> {
         self.tree.max()
     }
+
+    pub fn traverse<F>(&self, traverse: &mut F) where F: FnMut(&T) {
+        self.tree.traverse(&mut |k, _| traverse(k));
+    }
 }
 
 impl<T, C> IntoIterator for SplaySet<T, C>
